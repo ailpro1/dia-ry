@@ -1,9 +1,9 @@
 /* Note screen: the entry timeline, styled after a paper diary page. */
 
 import { $, el, clockTime, shortDate, sanitizeHTML } from '../util.js';
-import { getNote, listEntries, getPhotos, deleteEntry } from '../store.js';
+import { getNote, listEntries, getPhotos, deleteEntry, restore } from '../store.js';
 import { blobURL } from '../images.js';
-import { openLightbox, confirmAction, toast } from '../ui.js';
+import { openLightbox, toast, toastAction } from '../ui.js';
 
 let current = null;   // note id
 let handlers = {};
@@ -36,11 +36,15 @@ export function initNote(opts) {
     }
     const delBtn = ev.target.closest('[data-delete-entry]');
     if (delBtn) {
-      if (!confirmAction('Delete this entry and its photos?')) return;
-      await deleteEntry(delBtn.closest('.entry').dataset.id);
-      toast('entry deleted');
+      const bundle = await deleteEntry(delBtn.closest('.entry').dataset.id);
       await render(current);
       handlers.onChanged();
+      toastAction('entry deleted', 'undo', async () => {
+        await restore(bundle);
+        await render(current);
+        handlers.onChanged();
+        toast('entry restored');
+      });
     }
   });
 }
@@ -54,10 +58,12 @@ export async function render(noteId) {
   const note = await getNote(noteId);
   if (!note) { handlers.onMissing(); return; }
 
-  const bits = [shortDate(note.date)];
+  // Untitled notes wear their date as the heading instead of the word
+  // "untitled", so a quick-captured page still reads like a diary page.
+  const bits = note.title ? [shortDate(note.date)] : [];
   if (note.place) bits.push(note.place);
   $('#note-sub').textContent = bits.join(' · ');
-  $('#note-title').textContent = note.title || 'untitled';
+  $('#note-title').textContent = note.title || shortDate(note.date);
   $('#note-pin').style.color = note.pinned ? 'var(--tint)' : '';
   $('#note-pin').setAttribute('aria-pressed', note.pinned ? 'true' : 'false');
 

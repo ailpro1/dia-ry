@@ -37,9 +37,30 @@ export function wireSheets() {
 }
 
 let toastTimer;
+
 export function toast(message, ms = 2200) {
+  showToast(message, null, null, ms);
+}
+
+/** A toast with one tappable action, used for undo. */
+export function toastAction(message, label, onAction, ms = 8000) {
+  showToast(message, label, onAction, ms);
+}
+
+function showToast(message, label, onAction, ms) {
   const node = $('#toast');
-  node.textContent = message;
+  node.replaceChildren(el('span', { text: message }));
+  node.classList.toggle('has-action', !!label);
+  if (label) {
+    node.append(el('button', {
+      class: 'act', text: label,
+      onclick: () => {
+        node.classList.remove('show');
+        clearTimeout(toastTimer);
+        onAction();
+      },
+    }));
+  }
   node.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => node.classList.remove('show'), ms);

@@ -11,6 +11,13 @@ write stays in the browser's own database on the device.
 - **Notes and entries.** A note is a page (a day, a place, a mood). Inside it,
   entries stack up on a timeline with the time in the left margin, exactly like
   a paper diary.
+- **Write in one tap.** The home button drops you straight into today's page,
+  making it if it does not exist yet. A page with no title wears its date
+  instead, so nothing has to be named.
+- **On this day.** A quiet line on home for what you wrote on this date in
+  earlier years.
+- **Undo.** Deleting a note or an entry offers eight seconds of undo, photos
+  and all.
 - **Photos.** Pick as many as you like per entry. They are compressed on the
   device (1800px long edge) with a separate thumbnail, so scrolling stays fast
   and years of photos still fit.
@@ -22,7 +29,8 @@ write stays in the browser's own database on the device.
 - **Updates itself.** A new deploy is picked up the next time the app is
   opened — no reinstall, no clearing anything.
 - **Backups.** One tap produces a `.zip` holding `diary.json` plus every photo
-  as an ordinary `.jpg`. Restore merges or replaces.
+  as an ordinary `.jpg`. On iPhone it opens the share sheet, so *Save to Files*
+  puts it in iCloud Drive. Restore merges or replaces.
 
 ## Install on iPhone
 
@@ -68,9 +76,11 @@ IndexedDB, in the browser, on that one device. Nothing is uploaded anywhere.
 That also means: **nothing is backed up for you.** Two things to know if you
 plan to keep this for years.
 
-1. Run **Settings → back up to a zip file** now and then and put the zip
-   somewhere else — iCloud Drive, a computer, an external disk. The app nudges
-   you monthly.
+1. Run **Settings → back up to a zip file** now and then and send it somewhere
+   else — the iPhone share sheet offers *Save to Files* → iCloud Drive. The app
+   nudges you monthly. (Building the zip can use up the tap Safari allows for
+   sharing; when that happens the row turns into **save your backup** and one
+   more tap sends it.)
 2. Deleting the app from the home screen, or "Clear website data" in Safari,
    erases the diary. The app asks iOS to mark its storage persistent, which
    protects it from routine eviction, but not from a deliberate wipe.

@@ -3,7 +3,7 @@
 import { $, el, bytes } from '../util.js';
 import { setSetting, stats } from '../store.js';
 import { storageEstimate, requestPersistence } from '../db.js';
-import { exportArchive, importArchive, download, backupFilename } from '../backup.js';
+import { exportArchive, importArchive, saveArchive, backupFilename } from '../backup.js';
 import { openSheet, toast, confirmAction } from '../ui.js';
 import { currentVersion, checkNow, updateReady } from '../update.js';
 
@@ -17,6 +17,7 @@ export const THEMES = [
 ];
 
 let ctx = null;
+let pendingBackup = null;  // a built zip waiting for a second tap to save it
 
 function isStandalone() {
   return window.matchMedia('(display-mode: standalone)').matches ||
@@ -44,6 +45,7 @@ export async function openSettings() {
 async function renderSettings() {
   const body = $('#settings-body');
   const s = ctx.settings;
+  pendingBackup = null;
   body.replaceChildren();
 
   /* --- install hint (iOS only offers Add to Home Screen from Safari) --- */
@@ -156,8 +158,8 @@ async function renderSettings() {
       el('span', { class: 'val', text: est ? bytes(est.usage) : 'unknown' }),
     ]),
     el('button', {
-      class: 'row',
-      onclick: () => doExport(progress),
+      class: 'row', id: 'row-backup',
+      onclick: (ev) => doExport(ev.currentTarget, progress),
     }, [
       el('span', { class: 'lab', text: 'back up to a zip file' }),
       el('span', { class: 'val', text: `last: ${last}` }),
@@ -173,7 +175,8 @@ async function renderSettings() {
   body.append(el('div', {
     class: 'hint', style: 'margin-top:8px',
     text: 'the zip holds a readable diary.json plus every photo as a normal jpg. '
-      + 'keep a copy somewhere off this phone — iCloud Drive, a computer, anywhere.',
+      + 'on iphone the share sheet opens — choose "save to files" and put it in '
+      + 'icloud drive, so a copy lives off this phone.',
   }));
 
   /* --- danger --- */
@@ -231,7 +234,15 @@ async function renderSettings() {
   }));
 }
 
-async function doExport(progress) {
+async function doExport(row, progress) {
+  if (pendingBackup) {
+    const { blob, name } = pendingBackup;
+    await saveArchive(blob, name);
+    await markBackedUp();
+    renderSettings();
+    return;
+  }
+
   const fill = progress.querySelector('i');
   progress.hidden = false;
   toast('building your backup…', 6000);
@@ -239,10 +250,20 @@ async function doExport(progress) {
     const blob = await exportArchive((done, total) => {
       fill.style.width = `${Math.round((done / total) * 100)}%`;
     });
-    download(blob, backupFilename());
-    ctx.settings.lastBackupAt = Date.now();
-    await setSetting('lastBackupAt', ctx.settings.lastBackupAt);
-    toast(`backup ready — ${bytes(blob.size)}`);
+    const name = backupFilename();
+    const how = await saveArchive(blob, name);
+
+    if (how === 'blocked') {
+      // Building the zip used up the tap; offer the share on a fresh one.
+      handOff(row, blob, name);
+      toast(`backup ready — ${bytes(blob.size)}, tap to save it`, 6000);
+      return;
+    }
+
+    await markBackedUp();
+    toast(how === 'shared'
+      ? `backup sent — ${bytes(blob.size)}`
+      : `backup saved — ${bytes(blob.size)}`);
     renderSettings();
   } catch (err) {
     console.error(err);
@@ -251,6 +272,20 @@ async function doExport(progress) {
     progress.hidden = true;
     fill.style.width = '0';
   }
+}
+
+/** Turn the row into a one-tap "save it now" button holding the finished zip.
+ *  Sharing needs a fresh tap: building the archive spends the first one. */
+function handOff(row, blob, name) {
+  pendingBackup = { blob, name };
+  row.querySelector('.lab').textContent = 'save your backup';
+  row.querySelector('.val').textContent = bytes(blob.size);
+  row.style.color = 'var(--tint)';
+}
+
+async function markBackedUp() {
+  ctx.settings.lastBackupAt = Date.now();
+  await setSetting('lastBackupAt', ctx.settings.lastBackupAt);
 }
 
 function pickRestore(progress) {

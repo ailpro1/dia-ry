@@ -75,7 +75,13 @@ export async function updateNote(id, patch) {
   return db.get('notes', id);
 }
 
+/**
+ * Delete a note and everything under it.
+ * @returns a bundle that {@link restore} can put back, for undo.
+ */
 export async function deleteNote(id) {
+  const note = await db.get('notes', id);
+  if (!note) return null;
   const photos = await db.index('photos', 'by_note', IDBKeyRange.only(id));
   const entries = await db.index('entries', 'by_note', IDBKeyRange.only(id));
   await db.write(['notes', 'entries', 'photos'], (tx) => {
@@ -84,6 +90,22 @@ export async function deleteNote(id) {
     tx.objectStore('notes').delete(id);
   });
   photos.forEach((p) => releaseURL(p.id));
+  return { notes: [note], entries, photos };
+}
+
+/** Put a deleted bundle back exactly as it was. */
+export async function restore(bundle) {
+  if (!bundle) return;
+  await db.write(['notes', 'entries', 'photos'], (tx) => {
+    for (const n of bundle.notes || []) tx.objectStore('notes').put(n);
+    for (const e of bundle.entries || []) tx.objectStore('entries').put(e);
+    for (const p of bundle.photos || []) tx.objectStore('photos').put(p);
+  });
+  const touched = new Set([
+    ...(bundle.notes || []).map((n) => n.id),
+    ...(bundle.entries || []).map((e) => e.noteId),
+  ]);
+  for (const id of touched) await refreshNote(id);
 }
 
 /**
@@ -125,6 +147,33 @@ export async function listPinned() {
   return rows.sort((a, b) => (a.sortKey < b.sortKey ? 1 : -1));
 }
 
+/** The note quick capture writes into: today's, newest first, or a new one. */
+export async function todayNote() {
+  const today = isoDate();
+  const rows = await db.index('notes', 'by_date', IDBKeyRange.only(today));
+  if (rows.length) {
+    return rows.sort((a, b) => b.createdAt - a.createdAt)[0];
+  }
+  return createNote({ date: today });
+}
+
+/**
+ * Notes written on this day in earlier years.
+ * @param {number} [back] how many years to look back
+ */
+export async function onThisDay(back = 12) {
+  const now = new Date();
+  const suffix = isoDate(now).slice(4); // "-MM-DD"
+  const out = [];
+  for (let y = 1; y <= back; y += 1) {
+    const date = `${now.getFullYear() - y}${suffix}`;
+    // eslint-disable-next-line no-await-in-loop -- one tiny index hit each
+    const rows = await db.index('notes', 'by_date', IDBKeyRange.only(date));
+    for (const note of rows) out.push({ note, years: y });
+  }
+  return out;
+}
+
 /* ---------------- entries ---------------- */
 
 export async function listEntries(noteId) {
@@ -163,7 +212,7 @@ export async function updateEntry(id, { at, html, photoOrder } = {}) {
 
 export async function deleteEntry(id) {
   const entry = await db.get('entries', id);
-  if (!entry) return;
+  if (!entry) return null;
   const photos = await db.index('photos', 'by_entry', IDBKeyRange.only(id));
   await db.write(['entries', 'photos'], (tx) => {
     for (const p of photos) tx.objectStore('photos').delete(p.id);
@@ -171,6 +220,7 @@ export async function deleteEntry(id) {
   });
   photos.forEach((p) => releaseURL(p.id));
   await refreshNote(entry.noteId);
+  return { entries: [entry], photos };
 }
 
 /* ---------------- photos ---------------- */

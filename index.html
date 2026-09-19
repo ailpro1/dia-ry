@@ -43,6 +43,7 @@
     <g id="i-pin"><path d="M12 17v5"/><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z"/></g>
     <g id="i-close"><path d="M6 6l12 12M18 6L6 18"/></g>
     <g id="i-plus"><path d="M12 5v14M5 12h14"/></g>
+    <g id="i-newnote"><path d="M5 4h9l5 5v11a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M14 4v5h5"/><path d="M9 14h6M12 11v6"/></g>
     <g id="i-clock"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></g>
   </defs>
 </svg>
@@ -72,7 +73,12 @@
     <div class="page" id="home-list"></div>
 
     <div class="dock">
-      <button class="btn-pill" id="btn-new">+ new note</button>
+      <div class="dock-row">
+        <button class="btn-pill" id="btn-write">+ write</button>
+        <button class="btn-square" id="btn-new" aria-label="Start a new note">
+          <svg><use href="#i-newnote"/></svg>
+        </button>
+      </div>
     </div>
   </section>
 

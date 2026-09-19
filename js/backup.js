@@ -165,6 +165,29 @@ export async function importArchive(file, mode = 'merge', onProgress = () => {})
   return result;
 }
 
+/**
+ * Hand the archive to the OS. On iOS the share sheet is the only sane route
+ * to iCloud Drive, so try it first and fall back to a plain download.
+ * Must be called from a user gesture or Safari refuses the share.
+ * @returns {Promise<'shared'|'downloaded'|'blocked'>}
+ */
+export async function saveArchive(blob, filename) {
+  const file = new File([blob], filename, { type: 'application/zip' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: 'dia-ry backup' });
+      return 'shared';
+    } catch (err) {
+      // The user dismissing the sheet is not a failure worth reporting.
+      if (err && err.name === 'AbortError') return 'shared';
+      // No transient activation left: the caller offers a second tap.
+      if (err && err.name === 'NotAllowedError') return 'blocked';
+    }
+  }
+  download(blob, filename);
+  return 'downloaded';
+}
+
 export function download(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

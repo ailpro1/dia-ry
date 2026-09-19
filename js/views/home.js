@@ -1,7 +1,7 @@
 /* Home: the timeline of notes, newest first, with search and paging. */
 
-import { $, el, monthLabel, relativeDay, debounce } from '../util.js';
-import { listNotes, listPinned, getPhotos } from '../store.js';
+import { $, el, monthLabel, relativeDay, shortDate, debounce } from '../util.js';
+import { listNotes, listPinned, getPhotos, onThisDay } from '../store.js';
 import { blobURL } from '../images.js';
 
 const PAGE = 20;
@@ -39,7 +39,7 @@ export function initHome({ onOpenNote }) {
   }, { rootMargin: '600px' });
 
   list.addEventListener('click', (ev) => {
-    const card = ev.target.closest('.note-card');
+    const card = ev.target.closest('.note-card, .echo');
     if (card) state.onOpenNote(card.dataset.id);
   });
 }
@@ -51,6 +51,8 @@ export async function reload() {
   state.shown = new Set();
   const list = $('#home-list');
   list.replaceChildren();
+
+  if (!state.query) await renderEchoes(list);
 
   // Pinned notes ride above the timeline, and only when not searching.
   if (!state.query) {
@@ -106,6 +108,25 @@ async function loadMore() {
   }
 }
 
+/** "on this day" — what was written on this date in earlier years. */
+async function renderEchoes(list) {
+  let past;
+  try { past = await onThisDay(); } catch (_) { return; }
+  if (!past.length) return;
+
+  for (const { note, years } of past.slice(0, 2)) {
+    list.append(el('button', { class: 'echo', 'data-id': note.id }, [
+      el('div', { class: 'when', text: years === 1 ? 'a year ago today' : `${years} years ago today` }),
+      el('div', { class: 'what', text: headingFor(note) }),
+    ]));
+  }
+}
+
+/** Untitled notes read as their date rather than as "untitled". */
+function headingFor(note) {
+  return note.title || shortDate(note.date);
+}
+
 function emptyState(query) {
   return el('div', { class: 'empty' }, [
     el('strong', { text: query ? 'nothing found' : 'nothing here yet' }),
@@ -114,18 +135,23 @@ function emptyState(query) {
 }
 
 async function card(note) {
-  const meta = [relativeDay(note.date)];
+  // An untitled note shows its date as the heading, so drop it from the meta.
+  const meta = note.title ? [relativeDay(note.date)] : [];
   if (note.place) meta.push(note.place);
   if (note.photoCount) {
     meta.push(`${note.photoCount} photo${note.photoCount > 1 ? 's' : ''}`);
   }
 
   const node = el('button', { class: 'note-card', 'data-id': note.id }, [
-    el('div', { class: 'meta' }, [
-      note.pinned ? el('span', { class: 'pin', text: '★' }) : null,
-      meta.join(' · '),
-    ]),
-    el('h2', { text: note.title || 'untitled' }),
+    // An untitled note with no place has nothing to put here; skip the row
+    // rather than leave a gap above the heading.
+    (meta.length || note.pinned)
+      ? el('div', { class: 'meta' }, [
+        note.pinned ? el('span', { class: 'pin', text: '★' }) : null,
+        meta.join(' · '),
+      ])
+      : null,
+    el('h2', { text: note.title || relativeDay(note.date) }),
   ]);
 
   if (note.preview) node.append(el('div', { class: 'excerpt', text: note.preview }));

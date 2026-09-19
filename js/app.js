@@ -2,11 +2,11 @@
 
 import { $, isoDate, el } from './util.js';
 import { db, requestPersistence } from './db.js';
-import { loadSettings, createNote, getNote, updateNote, deleteNote, listEntries }
-  from './store.js';
+import { loadSettings, createNote, getNote, updateNote, deleteNote, listEntries,
+  todayNote, restore } from './store.js';
 import { releaseAll } from './images.js';
-import { wireSheets, openSheet, closeSheet, closeLightbox, toast, topOverlayId,
-  anyOverlayOpen, confirmAction } from './ui.js';
+import { wireSheets, openSheet, closeSheet, closeLightbox, toast, toastAction,
+  topOverlayId, anyOverlayOpen, confirmAction } from './ui.js';
 import { initHome, reload as reloadHome, setGreeting } from './views/home.js';
 import { initNote, render as renderNote, currentNoteId } from './views/note.js';
 import { initComposer, openForNew, openForEdit, composerHasWork }
@@ -73,6 +73,21 @@ function goHome() {
   else location.hash = '#/';
 }
 
+/* ---------------- quick capture ---------------- */
+
+/** Straight into writing: today's page, made if it does not exist yet. */
+async function quickCapture() {
+  const note = await todayNote();
+  const target = `#/note/${note.id}`;
+  // Compare against the route, not the note view's last-rendered id: that id
+  // survives going home, which would leave the composer saving into a screen
+  // nobody is looking at.
+  const alreadyThere = location.hash === target;
+  if (!alreadyThere) location.hash = target;
+  // Let the note screen paint under the sheet before it slides up.
+  setTimeout(() => openForNew(note.id), alreadyThere ? 0 : 260);
+}
+
 /* ---------------- note details sheet ---------------- */
 
 let noteFormId = null;
@@ -134,7 +149,10 @@ async function boot() {
 
   initComposer({
     onSaved: async () => {
-      if (currentNoteId()) await renderNote(currentNoteId());
+      // Re-render whichever screen is actually on show.
+      const id = currentNoteId();
+      if (id && location.hash === `#/note/${id}`) await renderNote(id);
+      else await route();
     },
   });
 
@@ -161,6 +179,7 @@ async function boot() {
   });
 
   /* buttons */
+  $('#btn-write').addEventListener('click', quickCapture);
   $('#btn-new').addEventListener('click', () => openNoteForm(null));
   $('#btn-settings').addEventListener('click', openSettings);
   $('#noteform-save').addEventListener('click', saveNoteForm);
@@ -170,10 +189,14 @@ async function boot() {
   $('#nf-delete').addEventListener('click', async () => {
     if (!noteFormId) return;
     if (!confirmAction('Delete this note, its entries and all its photos?')) return;
-    await deleteNote(noteFormId);
+    const bundle = await deleteNote(noteFormId);
     closeSheet('sheet-note');
     location.hash = '#/';
-    toast('note deleted');
+    toastAction('note deleted', 'undo', async () => {
+      await restore(bundle);
+      location.hash = `#/note/${bundle.notes[0].id}`;
+      toast('note restored');
+    });
   });
 
   $('#note-back').addEventListener('click', goHome);
