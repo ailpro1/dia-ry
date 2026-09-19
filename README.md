@@ -92,7 +92,8 @@ js/ui.js                sheets, toast, lightbox
 js/views/               home, note, composer, settings
 sw.js                   offline shell cache + VERSION
 js/update.js            picks up new versions and reloads when it is safe
-scripts/make-icons.mjs  regenerates icons/ (node scripts/make-icons.mjs)
+icons/source.png        the icon artwork everything else is built from
+scripts/make-icons.mjs  rebuilds icons/ from source.png (needs a Chromium)
 ```
 
 ## Keeping it working for years

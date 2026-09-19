@@ -3,7 +3,7 @@
    what makes an installed copy pull the new files down and reload itself.
    User data lives in IndexedDB and is never touched here. */
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const CACHE = `dia-ry-${VERSION}`;
 
 const SHELL = [
@@ -24,8 +24,12 @@ const SHELL = [
   './js/views/note.js',
   './js/views/composer.js',
   './js/views/settings.js',
+  './icons/icon-120.png',
+  './icons/icon-152.png',
+  './icons/icon-167.png',
   './icons/icon-180.png',
   './icons/icon-192.png',
+  './icons/icon-256.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
   './icons/favicon.png',
