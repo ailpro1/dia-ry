@@ -6,10 +6,12 @@ import { loadSettings, createNote, getNote, updateNote, deleteNote, listEntries 
   from './store.js';
 import { releaseAll } from './images.js';
 import { wireSheets, openSheet, closeSheet, closeLightbox, toast, topOverlayId,
-  confirmAction } from './ui.js';
+  anyOverlayOpen, confirmAction } from './ui.js';
 import { initHome, reload as reloadHome, setGreeting } from './views/home.js';
 import { initNote, render as renderNote, currentNoteId } from './views/note.js';
-import { initComposer, openForNew, openForEdit } from './views/composer.js';
+import { initComposer, openForNew, openForEdit, composerHasWork }
+  from './views/composer.js';
+import { initUpdates } from './update.js';
 import { initSettings, openSettings } from './views/settings.js';
 
 const THEME_BG = {
@@ -198,7 +200,11 @@ async function boot() {
   window.addEventListener('hashchange', route);
   await route();
   await requestPersistence();
-  registerServiceWorker();
+
+  initUpdates({
+    // Never reload out from under an open sheet or a half-written entry.
+    isBusy: () => composerHasWork() || anyOverlayOpen(),
+  });
   nudgeBackup();
 }
 
@@ -210,12 +216,6 @@ function nudgeBackup() {
     if (n < 3) return;
     setTimeout(() => toast('tip: back up your diary from settings', 4000), 2500);
   });
-}
-
-function registerServiceWorker() {
-  if (!('serviceWorker' in navigator)) return;
-  const url = new URL('sw.js', document.baseURI).href;
-  navigator.serviceWorker.register(url).catch(() => { /* offline-only feature */ });
 }
 
 boot().catch((err) => {

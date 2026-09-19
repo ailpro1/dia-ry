@@ -1,8 +1,10 @@
 /* Offline shell cache.
-   Bump CACHE when any shell file changes; old caches are dropped on activate.
+   Bump VERSION when any shell file changes. That renames the cache, which is
+   what makes an installed copy pull the new files down and reload itself.
    User data lives in IndexedDB and is never touched here. */
 
-const CACHE = 'dia-ry-v1';
+const VERSION = '1.0.0';
+const CACHE = `dia-ry-${VERSION}`;
 
 const SHELL = [
   './',
@@ -17,6 +19,7 @@ const SHELL = [
   './js/images.js',
   './js/zip.js',
   './js/backup.js',
+  './js/update.js',
   './js/views/home.js',
   './js/views/note.js',
   './js/views/composer.js',
@@ -29,11 +32,22 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (event) => {
+  // No skipWaiting here: the page decides when to swap, so a half-written
+  // entry is never interrupted by a reload.
   event.waitUntil(
-    caches.open(CACHE)
-      .then((cache) => cache.addAll(SHELL))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE).then((cache) => cache.addAll(SHELL))
   );
+});
+
+self.addEventListener('message', (event) => {
+  const data = event.data || {};
+  if (data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+    return;
+  }
+  if (data.type === 'VERSION' && event.ports && event.ports[0]) {
+    event.ports[0].postMessage({ version: VERSION });
+  }
 });
 
 self.addEventListener('activate', (event) => {

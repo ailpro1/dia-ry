@@ -5,6 +5,7 @@ import { setSetting, stats } from '../store.js';
 import { storageEstimate, requestPersistence } from '../db.js';
 import { exportArchive, importArchive, download, backupFilename } from '../backup.js';
 import { openSheet, toast, confirmAction } from '../ui.js';
+import { currentVersion, checkNow, updateReady } from '../update.js';
 
 export const THEMES = [
   { id: 'peach', name: 'peach', dots: ['#fbe8d3', '#aeb3e0', '#2e2b28'] },
@@ -190,6 +191,36 @@ async function renderSettings() {
       },
     }, [el('span', { class: 'lab', text: 'erase everything' })]),
   ]));
+
+  /* --- version --- */
+  const version = await currentVersion();
+  body.append(el('p', { class: 'section-title', text: 'app' }));
+  body.append(el('div', { class: 'rows' }, [
+    el('div', { class: 'row' }, [
+      el('span', { class: 'lab', text: 'version' }),
+      el('span', { class: 'val', text: version || 'not installed offline yet' }),
+    ]),
+    el('button', {
+      class: 'row',
+      onclick: async (ev) => {
+        const val = ev.currentTarget.querySelector('.val');
+        val.textContent = 'checking…';
+        await checkNow(true);
+        // The swap itself is automatic; this only reports what it found.
+        setTimeout(() => {
+          val.textContent = updateReady() ? 'updating…' : 'up to date';
+        }, 1200);
+      },
+    }, [
+      el('span', { class: 'lab', text: 'check for updates' }),
+      el('span', { class: 'val', text: '' }),
+    ]),
+  ]));
+  body.append(el('div', {
+    class: 'hint', style: 'margin-top:8px',
+    text: 'updates install themselves the next time you open the app. '
+      + 'your notes and photos are never touched by an update.',
+  }));
 
   /* --- about --- */
   const persisted = await requestPersistence();

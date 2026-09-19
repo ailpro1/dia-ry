@@ -19,6 +19,8 @@ write stays in the browser's own database on the device.
 - **Search** across every title, place and word you have written.
 - **Themes.** Six palettes, light / dark / follow-system, and a text-size slider.
 - **Offline.** Works with no signal once installed.
+- **Updates itself.** A new deploy is picked up the next time the app is
+  opened — no reinstall, no clearing anything.
 - **Backups.** One tap produces a `.zip` holding `diary.json` plus every photo
   as an ordinary `.jpg`. Restore merges or replaces.
 
@@ -40,6 +42,24 @@ Any static host works; there is nothing to build.
 
 **Locally** — `npx http-server -p 8080 .` then open `http://localhost:8080`.
 Service workers need HTTPS or `localhost`.
+
+## Shipping an update
+
+1. Make the change.
+2. Bump `VERSION` in `sw.js` (`'1.0.0'` → `'1.0.1'`). That renames the cache,
+   which is the whole trigger. **An unchanged `VERSION` means installed phones
+   keep serving the old files.**
+3. Push. GitHub Pages redeploys.
+
+On the phone, nothing needs doing. Next time the app is opened it byte-checks
+`sw.js` against the server, downloads the new shell in the background, swaps it
+in and reloads once — usually before you have finished reading the home screen.
+A brief "updating dia-ry…" is the only sign of it.
+
+It will not reload while a sheet is open or an entry is half-written; it waits
+until you are done. Notes, entries and photos live in IndexedDB and are never
+touched by an update. *Settings → app* shows the running version and can force
+a check.
 
 ## Where your diary lives
 
@@ -70,7 +90,8 @@ js/zip.js               hand-written ZIP reader/writer
 js/backup.js            export / restore
 js/ui.js                sheets, toast, lightbox
 js/views/               home, note, composer, settings
-sw.js                   offline shell cache
+sw.js                   offline shell cache + VERSION
+js/update.js            picks up new versions and reloads when it is safe
 scripts/make-icons.mjs  regenerates icons/ (node scripts/make-icons.mjs)
 ```
 
@@ -82,5 +103,5 @@ scripts/make-icons.mjs  regenerates icons/ (node scripts/make-icons.mjs)
   app rather than half-imported.
 - There are no dependencies to rot. The only tooling is Node, and only for
   regenerating icons.
-- After changing any shell file, bump `CACHE` in `sw.js` so installed copies
-  pick the change up.
+- After changing any shell file, bump `VERSION` in `sw.js` (see below), so
+  installed copies pick the change up.

@@ -4,7 +4,7 @@
 import { $, el, timeInputValue, sanitizeHTML, isBlankHTML } from '../util.js';
 import { addEntry, updateEntry, attachPhotos, removePhoto, getPhotos } from '../store.js';
 import { processFile, blobURL } from '../images.js';
-import { openSheet, closeSheet, toast, confirmAction } from '../ui.js';
+import { openSheet, closeSheet, toast, confirmAction, isSheetOpen } from '../ui.js';
 
 const DRAFT_KEY = 'diary.draft';
 
@@ -70,6 +70,11 @@ function guardClose(ev) {
   } else {
     clearDraft();
   }
+}
+
+/** True while a reload would cost the writer something. */
+export function composerHasWork() {
+  return isSheetOpen('sheet-composer') && (state.busy || dirty());
 }
 
 function dirty() {
