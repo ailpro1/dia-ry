@@ -15,6 +15,8 @@ write stays in the browser's own database on the device.
 - **Notes and entries.** A note is a page inside a notebook (a day, a place, a
   mood). Inside it, entries stack up on a timeline with the time in the left
   margin, photos above their words, exactly like a paper diary.
+- **Opens where you left off.** A brief splash while the database opens, then
+  the notebook you had open last — not back to the shelf every time.
 - **Write in one tap.** The home button drops you straight into today's page,
   making it if it does not exist yet. A page with no title wears its date
   instead, so nothing has to be named.
@@ -96,7 +98,8 @@ photos are normal JPEGs.
 ## Project layout
 
 ```
-index.html              app shell, all screens
+index.html              app shell, all screens, and the splash (inline, so it
+                        paints before any other file is fetched)
 css/app.css             themes + layout (every colour is a token)
 js/db.js                IndexedDB open/transaction helpers + migrations
 js/store.js             notebooks, notes, entries, photos, settings

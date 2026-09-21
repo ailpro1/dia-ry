@@ -10,7 +10,7 @@ const SEARCH_CAP = 6000; // chars of note body kept for search
 
 export const DEFAULT_SETTINGS = {
   ownerName: '',
-  currentNotebook: DEFAULT_NOTEBOOK,
+  currentNotebook: '',   // set once a notebook is opened; '' means the shelf
   theme: 'peach',
   mode: 'auto',       // auto | light | dark
   fontScale: 1,

@@ -31,6 +31,29 @@ const THEME_BG = {
 
 let settings = null;
 
+/* The splash covers the blank moment while modules and the database open.
+   It is held for a beat so it reads as a greeting rather than a flicker, and
+   never for long enough to get in the way. */
+const SPLASH_MIN_MS = 700;
+const SPLASH_MAX_MS = 3500;
+const splashShownAt = Date.now();
+let splashDone = false;
+
+function hideSplash() {
+  if (splashDone) return;
+  splashDone = true;
+  const node = document.getElementById('splash');
+  if (!node) return;
+  const wait = Math.max(0, SPLASH_MIN_MS - (Date.now() - splashShownAt));
+  setTimeout(() => {
+    node.classList.add('gone');
+    setTimeout(() => node.remove(), 400);
+  }, wait);
+}
+
+// A failure to boot must not leave the splash sitting there for ever.
+setTimeout(hideSplash, SPLASH_MAX_MS);
+
 /* ---------------- theme ---------------- */
 
 function prefersDark() {
@@ -96,10 +119,12 @@ async function setCurrentNotebook(id) {
   await setSetting('currentNotebook', id);
 }
 
-/* Where the last hashchange came from. Real back is nicer when it applies
-   (it keeps scroll position and the forward entry), but after a note moves
-   notebooks the previous entry is the wrong shelf, so check first. */
-let prevHash = '#/';
+/* Where the last hashchange came from, or null when nothing has been
+   navigated yet. Real back is nicer when it applies (it keeps scroll position
+   and the forward entry), but after a note moves notebooks the previous entry
+   is the wrong shelf — and on a resumed cold start there is no entry behind
+   us at all, so pressing back would leave the app. */
+let prevHash = null;
 
 function goBackTo(hash) {
   if (prevHash === hash && location.hash !== hash) history.back();
@@ -242,6 +267,20 @@ async function saveNotebookForm() {
   }
 }
 
+/**
+ * Open where the diary was left. Only on a cold start with no route of its
+ * own — tapping back to the shelf must still land on the shelf.
+ */
+async function resumeLastNotebook() {
+  if (location.hash && location.hash !== '#/') return;
+  if (!settings.currentNotebook) return;
+  const book = await getNotebook(settings.currentNotebook);
+  if (!book) return;
+  // replaceState, so the first back press leaves the app rather than
+  // bouncing between the shelf and the notebook.
+  history.replaceState(null, '', `#/nb/${book.id}`);
+}
+
 /* ---------------- boot ---------------- */
 
 async function boot() {
@@ -301,8 +340,8 @@ async function boot() {
         tx.objectStore('notebooks').clear();
       });
       releaseAll();
-      settings.currentNotebook = DEFAULT_NOTEBOOK;
-      await setSetting('currentNotebook', DEFAULT_NOTEBOOK);
+      settings.currentNotebook = '';
+      await setSetting('currentNotebook', '');
       location.hash = '#/';
       await route();
     },
@@ -380,7 +419,10 @@ async function boot() {
     try { prevHash = new URL(ev.oldURL).hash || '#/'; } catch (_) { prevHash = '#/'; }
     route();
   });
+
+  await resumeLastNotebook();
   await route();
+  hideSplash();
   await requestPersistence();
 
   initUpdates({
@@ -402,6 +444,7 @@ function nudgeBackup() {
 
 boot().catch((err) => {
   console.error(err);
+  hideSplash();
   document.body.append(el('div', {
     style: 'padding:40px 20px;font-family:system-ui;text-align:center',
     text: `dia-ry could not start: ${err.message}`,
