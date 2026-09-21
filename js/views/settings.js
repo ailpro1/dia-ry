@@ -147,6 +147,7 @@ async function renderSettings() {
       el('span', {
         class: 'val',
         text: [
+          plural(counts.notebooks, 'notebook'),
           plural(counts.notes, 'note'),
           plural(counts.entries, 'entry', 'entries'),
           plural(counts.photos, 'photo'),

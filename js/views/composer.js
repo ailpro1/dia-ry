@@ -2,7 +2,8 @@
    Photos are compressed as soon as they are picked so saving is instant. */
 
 import { $, el, timeInputValue, sanitizeHTML, isBlankHTML } from '../util.js';
-import { addEntry, updateEntry, attachPhotos, removePhoto, getPhotos } from '../store.js';
+import { addEntry, updateEntry, attachPhotos, removePhoto, getPhotos, getNote,
+  getNotebook } from '../store.js';
 import { processFile, blobURL } from '../images.js';
 import { openSheet, closeSheet, toast, confirmAction, isSheetOpen } from '../ui.js';
 
@@ -35,11 +36,17 @@ export function initComposer({ onSaved }) {
     applyCommand(btn.dataset.cmd, btn.dataset.arg);
   });
 
-  $('#file-input').addEventListener('change', async (ev) => {
-    const files = [...ev.target.files];
-    ev.target.value = '';
-    await intake(files);
-  });
+  for (const id of ['#file-input', '#camera-input']) {
+    $(id).addEventListener('change', async (ev) => {
+      const files = [...ev.target.files];
+      ev.target.value = '';
+      await intake(files);
+    });
+  }
+  // The shutter opens the camera directly; the side button opens the library.
+  $('#btn-shutter').addEventListener('click', () => $('#camera-input').click());
+  $('#btn-library').addEventListener('click', () => $('#file-input').click());
+  $('#btn-done').addEventListener('click', save);
 
   const editor = $('#composer-editor');
   editor.addEventListener('input', saveDraft);
@@ -88,6 +95,7 @@ export async function openForNew(noteId, { at = Date.now() } = {}) {
   reset();
   state.noteId = noteId;
   state.at = at;
+  await showWhere(noteId);
   $('#composer-title').textContent = 'add';
   $('#composer-at').value = timeInputValue(at);
 
@@ -103,6 +111,7 @@ export async function openForNew(noteId, { at = Date.now() } = {}) {
 export async function openForEdit(noteId, entry) {
   reset();
   state.noteId = noteId;
+  await showWhere(noteId);
   state.entryId = entry.id;
   state.at = entry.at;
   $('#composer-title').textContent = 'edit';
@@ -111,6 +120,17 @@ export async function openForEdit(noteId, entry) {
   state.existing = await getPhotos(entry.photos || []);
   renderTray();
   show();
+}
+
+/** Name the page being written into, the way the reference names its book. */
+async function showWhere(noteId) {
+  let where = '';
+  try {
+    const note = await getNote(noteId);
+    const book = note && await getNotebook(note.notebookId);
+    where = [book && book.name, note && note.place].filter(Boolean).join(' · ');
+  } catch (_) { where = ''; }
+  $('#composer-where').textContent = where;
 }
 
 function show() {

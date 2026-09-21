@@ -2,7 +2,7 @@
    Everything the UI needs goes through here so invariants (counts, covers,
    search text) are maintained in one place. */
 
-import { db } from './db.js';
+import { db, DEFAULT_NOTEBOOK } from './db.js';
 import { uid, isoDate, htmlToText, sanitizeHTML } from './util.js';
 import { processFile, releaseURL } from './images.js';
 
@@ -10,6 +10,7 @@ const SEARCH_CAP = 6000; // chars of note body kept for search
 
 export const DEFAULT_SETTINGS = {
   ownerName: '',
+  currentNotebook: DEFAULT_NOTEBOOK,
   theme: 'peach',
   mode: 'auto',       // auto | light | dark
   fontScale: 1,
@@ -32,16 +33,113 @@ export function setSetting(key, value) {
   return db.put('settings', { key, value });
 }
 
+/* ---------------- notebooks ---------------- */
+
+export async function listNotebooks() {
+  const rows = await db.all('notebooks');
+  if (!rows.length) {
+    // A brand-new install has no shelf yet.
+    const first = await createNotebook({ name: 'diary', id: DEFAULT_NOTEBOOK });
+    return [first];
+  }
+  return rows.sort((a, b) => (a.order - b.order) || (a.createdAt - b.createdAt));
+}
+
+export async function createNotebook({ name = '', cover = null, id = null } = {}) {
+  const rows = await db.all('notebooks');
+  const now = Date.now();
+  const book = {
+    id: id || uid(),
+    name: name.trim(),
+    cover: cover || { design: 'kraft', color: 'sand' },
+    order: rows.length,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await db.put('notebooks', book);
+  return book;
+}
+
+export function getNotebook(id) {
+  return db.get('notebooks', id);
+}
+
+export async function updateNotebook(id, patch) {
+  const book = await db.get('notebooks', id);
+  if (!book) throw new Error('Notebook not found');
+  Object.assign(book, patch);
+  if (typeof book.name === 'string') book.name = book.name.trim();
+  book.updatedAt = Date.now();
+  await db.put('notebooks', book);
+  return book;
+}
+
+/** Delete a notebook with everything in it, returning an undo bundle. */
+export async function deleteNotebook(id) {
+  const book = await db.get('notebooks', id);
+  if (!book) return null;
+  const notes = await db.index('notes', 'by_notebook', IDBKeyRange.only(id));
+  const bundle = { notebooks: [book], notes: [], entries: [], photos: [] };
+
+  for (const note of notes) {
+    // eslint-disable-next-line no-await-in-loop -- one note at a time keeps
+    // the transactions small enough for a phone.
+    const part = await deleteNote(note.id);
+    if (!part) continue;
+    bundle.notes.push(...part.notes);
+    bundle.entries.push(...part.entries);
+    bundle.photos.push(...part.photos);
+  }
+
+  await db.del('notebooks', id);
+  return bundle;
+}
+
+export async function reorderNotebooks(ids) {
+  const rows = await db.all('notebooks');
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  await db.write('notebooks', (tx) => {
+    ids.forEach((id, i) => {
+      const row = byId.get(id);
+      if (row) { row.order = i; tx.objectStore('notebooks').put(row); }
+    });
+  });
+}
+
+/** Note counts per notebook, plus the overall total. */
+export async function notebookCounts() {
+  const counts = {};
+  let total = 0;
+  await db.read('notes', (tx) => {
+    const idx = tx.objectStore('notes').index('by_notebook');
+    return new Promise((resolve, reject) => {
+      const cur = idx.openKeyCursor();
+      cur.onerror = () => reject(cur.error);
+      cur.onsuccess = () => {
+        const c = cur.result;
+        if (!c) { resolve(); return; }
+        counts[c.key] = (counts[c.key] || 0) + 1;
+        total += 1;
+        c.continue();
+      };
+    });
+  });
+  return { counts, total };
+}
+
 /* ---------------- notes ---------------- */
 
 function sortKeyFor(date, createdAt) {
   return `${date}|${String(createdAt).padStart(15, '0')}`;
 }
 
-export async function createNote({ title = '', date = isoDate(), place = '' } = {}) {
+export async function createNote({
+  title = '', date = isoDate(), place = '', notebookId = DEFAULT_NOTEBOOK,
+} = {}) {
   const now = Date.now();
   const note = {
     id: uid(),
+    notebookId,
     title: title.trim(),
     date,
     place: place.trim(),
@@ -96,7 +194,8 @@ export async function deleteNote(id) {
 /** Put a deleted bundle back exactly as it was. */
 export async function restore(bundle) {
   if (!bundle) return;
-  await db.write(['notes', 'entries', 'photos'], (tx) => {
+  await db.write(['notes', 'entries', 'photos', 'notebooks'], (tx) => {
+    for (const b of bundle.notebooks || []) tx.objectStore('notebooks').put(b);
     for (const n of bundle.notes || []) tx.objectStore('notes').put(n);
     for (const e of bundle.entries || []) tx.objectStore('entries').put(e);
     for (const p of bundle.photos || []) tx.objectStore('photos').put(p);
@@ -114,15 +213,23 @@ export async function restore(bundle) {
  * @param {string} [opts.cursor] sortKey of the last note already shown
  * @param {number} [opts.limit]
  * @param {string} [opts.query] case-insensitive substring over title + body
+ * @param {string} [opts.notebookId] limit to one notebook
  */
-export async function listNotes({ cursor = null, limit = 25, query = '' } = {}) {
+export async function listNotes({
+  cursor = null, limit = 25, query = '', notebookId = null,
+} = {}) {
   const q = query.trim().toLowerCase();
-  const range = cursor
-    ? IDBKeyRange.upperBound(cursor, true)
-    : null;
+  const scoped = !!notebookId;
+  const range = scoped
+    ? IDBKeyRange.bound(
+      [notebookId, ''], [notebookId, cursor === null ? '\uffff' : cursor],
+      false, cursor !== null
+    )
+    : (cursor ? IDBKeyRange.upperBound(cursor, true) : null);
 
   return db.read('notes', (tx) => {
-    const idx = tx.objectStore('notes').index('by_sort');
+    const idx = tx.objectStore('notes')
+      .index(scoped ? 'by_notebook_sort' : 'by_sort');
     const out = [];
     return new Promise((resolve, reject) => {
       const cur = idx.openCursor(range, 'prev');
@@ -142,19 +249,22 @@ export async function listNotes({ cursor = null, limit = 25, query = '' } = {}) 
   });
 }
 
-export async function listPinned() {
+export async function listPinned(notebookId = null) {
   const rows = await db.index('notes', 'by_pinned', IDBKeyRange.only(1));
-  return rows.sort((a, b) => (a.sortKey < b.sortKey ? 1 : -1));
+  return rows
+    .filter((n) => !notebookId || n.notebookId === notebookId)
+    .sort((a, b) => (a.sortKey < b.sortKey ? 1 : -1));
 }
 
 /** The note quick capture writes into: today's, newest first, or a new one. */
-export async function todayNote() {
+export async function todayNote(notebookId = DEFAULT_NOTEBOOK) {
   const today = isoDate();
-  const rows = await db.index('notes', 'by_date', IDBKeyRange.only(today));
+  const rows = (await db.index('notes', 'by_date', IDBKeyRange.only(today)))
+    .filter((n) => n.notebookId === notebookId);
   if (rows.length) {
     return rows.sort((a, b) => b.createdAt - a.createdAt)[0];
   }
-  return createNote({ date: today });
+  return createNote({ date: today, notebookId });
 }
 
 /**
@@ -337,8 +447,9 @@ export async function refreshNote(noteId) {
 /* ---------------- stats ---------------- */
 
 export async function stats() {
-  const [notes, entries, photos] = await Promise.all([
-    db.count('notes'), db.count('entries'), db.count('photos'),
+  const [notebooks, notes, entries, photos] = await Promise.all([
+    db.count('notebooks'), db.count('notes'), db.count('entries'),
+    db.count('photos'),
   ]);
-  return { notes, entries, photos };
+  return { notebooks, notes, entries, photos };
 }

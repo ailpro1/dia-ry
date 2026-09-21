@@ -3,7 +3,8 @@
    as long as the diary is kept, so never drop or repurpose an existing store. */
 
 const DB_NAME = 'diary';
-const DB_VERSION = 1;
+export const DEFAULT_NOTEBOOK = 'nb-diary';
+const DB_VERSION = 2;
 
 let dbPromise = null;
 
@@ -13,6 +14,7 @@ function open() {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (ev) => {
       const db = req.result;
+      const tx = req.transaction;
       const from = ev.oldVersion;
 
       if (from < 1) {
@@ -33,6 +35,40 @@ function open() {
         photos.createIndex('by_entry', 'entryId');
 
         db.createObjectStore('settings', { keyPath: 'key' });
+      }
+
+      if (from < 2) {
+        // Notebooks: a note now lives in one.
+        const books = db.createObjectStore('notebooks', { keyPath: 'id' });
+        books.createIndex('by_order', 'order');
+
+        const notes = tx.objectStore('notes');
+        notes.createIndex('by_notebook', 'notebookId');
+        notes.createIndex('by_notebook_sort', ['notebookId', 'sortKey']);
+
+        // Everything written before notebooks existed moves into one, so no
+        // diary is ever stranded outside a shelf.
+        const shelf = {
+          id: DEFAULT_NOTEBOOK,
+          name: 'diary',
+          cover: { design: 'kraft', color: 'sand' },
+          order: 0,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        books.put(shelf);
+
+        const cursor = notes.openCursor();
+        cursor.onsuccess = () => {
+          const c = cursor.result;
+          if (!c) return;
+          const note = c.value;
+          if (!note.notebookId) {
+            note.notebookId = DEFAULT_NOTEBOOK;
+            c.update(note);
+          }
+          c.continue();
+        };
       }
     };
     req.onsuccess = () => {

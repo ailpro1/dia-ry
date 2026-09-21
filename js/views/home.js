@@ -1,68 +1,51 @@
-/* Home: the timeline of notes, newest first, with search and paging. */
+/* One notebook's timeline: its notes, newest first, paged. */
 
-import { $, el, monthLabel, relativeDay, shortDate, debounce } from '../util.js';
-import { listNotes, listPinned, getPhotos, onThisDay } from '../store.js';
+import { $, el, monthLabel, relativeDay } from '../util.js';
+import { listNotes, listPinned, getPhotos } from '../store.js';
 import { blobURL } from '../images.js';
 
 const PAGE = 20;
 
 const state = {
+  notebookId: null,
   cursor: null,
   done: false,
   loading: false,
-  query: '',
   lastMonth: null,
   observer: null,
   shown: new Set(),
+  onOpenNote: () => {},
 };
 
 export function initHome({ onOpenNote }) {
-  const list = $('#home-list');
   state.onOpenNote = onOpenNote;
 
-  const input = $('#search-input');
-  input.addEventListener('input', debounce(() => {
-    state.query = input.value;
-    reload();
-  }, 220));
-
-  $('#btn-search').addEventListener('click', () => {
-    const bar = $('#searchbar');
-    bar.hidden = !bar.hidden;
-    if (!bar.hidden) input.focus();
-    else if (state.query) { input.value = ''; state.query = ''; reload(); }
-  });
-
-  // Infinite scroll via a sentinel at the end of the list.
   state.observer = new IntersectionObserver((rows) => {
     if (rows.some((r) => r.isIntersecting)) loadMore();
   }, { rootMargin: '600px' });
 
-  list.addEventListener('click', (ev) => {
-    const card = ev.target.closest('.note-card, .echo');
+  $('#home-list').addEventListener('click', (ev) => {
+    const card = ev.target.closest('.note-card');
     if (card) state.onOpenNote(card.dataset.id);
   });
 }
 
-export async function reload() {
+export async function reload(notebookId = state.notebookId) {
+  state.notebookId = notebookId;
   state.cursor = null;
   state.done = false;
   state.lastMonth = null;
   state.shown = new Set();
+
   const list = $('#home-list');
   list.replaceChildren();
 
-  if (!state.query) await renderEchoes(list);
-
-  // Pinned notes ride above the timeline, and only when not searching.
-  if (!state.query) {
-    const pinned = await listPinned();
-    if (pinned.length) {
-      list.append(el('h2', { class: 'month-head', text: 'pinned' }));
-      for (const note of pinned) {
-        state.shown.add(note.id);
-        list.append(await card(note));
-      }
+  const pinned = await listPinned(notebookId);
+  if (pinned.length) {
+    list.append(el('h2', { class: 'month-head', text: 'pinned' }));
+    for (const note of pinned) {
+      state.shown.add(note.id);
+      list.append(await noteCard(note));
     }
   }
   return loadMore();
@@ -77,13 +60,16 @@ async function loadMore() {
 
   try {
     const { notes, done, cursor } = await listNotes({
-      cursor: state.cursor, limit: PAGE, query: state.query,
+      cursor: state.cursor, limit: PAGE, notebookId: state.notebookId,
     });
     state.cursor = cursor || state.cursor;
     state.done = done;
 
     if (!notes.length && !list.querySelector('.note-card')) {
-      list.append(emptyState(state.query));
+      list.append(el('div', { class: 'empty' }, [
+        el('strong', { text: 'nothing here yet' }),
+        'tap + write to start today',
+      ]));
       return;
     }
 
@@ -95,7 +81,7 @@ async function loadMore() {
         state.lastMonth = month;
         list.append(el('h2', { class: 'month-head', text: month }));
       }
-      list.append(await card(note));
+      list.append(await noteCard(note));
     }
 
     if (!state.done) {
@@ -108,33 +94,8 @@ async function loadMore() {
   }
 }
 
-/** "on this day" — what was written on this date in earlier years. */
-async function renderEchoes(list) {
-  let past;
-  try { past = await onThisDay(); } catch (_) { return; }
-  if (!past.length) return;
-
-  for (const { note, years } of past.slice(0, 2)) {
-    list.append(el('button', { class: 'echo', 'data-id': note.id }, [
-      el('div', { class: 'when', text: years === 1 ? 'a year ago today' : `${years} years ago today` }),
-      el('div', { class: 'what', text: headingFor(note) }),
-    ]));
-  }
-}
-
-/** Untitled notes read as their date rather than as "untitled". */
-function headingFor(note) {
-  return note.title || shortDate(note.date);
-}
-
-function emptyState(query) {
-  return el('div', { class: 'empty' }, [
-    el('strong', { text: query ? 'nothing found' : 'nothing here yet' }),
-    query ? 'try another word' : 'tap + new note to start today',
-  ]);
-}
-
-async function card(note) {
+/** One note as a card. Shared with the shelf's search results. */
+export async function noteCard(note) {
   // An untitled note shows its date as the heading, so drop it from the meta.
   const meta = note.title ? [relativeDay(note.date)] : [];
   if (note.place) meta.push(note.place);
@@ -143,8 +104,6 @@ async function card(note) {
   }
 
   const node = el('button', { class: 'note-card', 'data-id': note.id }, [
-    // An untitled note with no place has nothing to put here; skip the row
-    // rather than leave a gap above the heading.
     (meta.length || note.pinned)
       ? el('div', { class: 'meta' }, [
         note.pinned ? el('span', { class: 'pin', text: '★' }) : null,

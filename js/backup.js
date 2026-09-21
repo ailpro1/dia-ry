@@ -3,27 +3,36 @@
    plain JPEGs. Both halves are readable without this app, which matters for
    an archive meant to outlive it. */
 
-import { db } from './db.js';
+import { db, DEFAULT_NOTEBOOK } from './db.js';
 import { sanitizeHTML } from './util.js';
 import { releaseAll } from './images.js';
 import { writeZip, readZip } from './zip.js';
 import { refreshNote } from './store.js';
 
-export const FORMAT = 1;
+export const FORMAT = 2;
 
 export async function exportArchive(onProgress = () => {}) {
-  const [notes, entries, settings, photos] = await Promise.all([
-    db.all('notes'), db.all('entries'), db.all('settings'), db.all('photos'),
+  const [notebooks, notes, entries, settings, photos] = await Promise.all([
+    db.all('notebooks'), db.all('notes'), db.all('entries'), db.all('settings'),
+    db.all('photos'),
   ]);
 
   const manifest = {
     format: FORMAT,
     app: 'dia-ry',
     exportedAt: new Date().toISOString(),
-    counts: { notes: notes.length, entries: entries.length, photos: photos.length },
+    counts: {
+      notebooks: notebooks.length, notes: notes.length,
+      entries: entries.length, photos: photos.length,
+    },
     settings: settings.map(({ key, value }) => ({ key, value })),
+    notebooks: notebooks.map((b) => ({
+      id: b.id, name: b.name, cover: b.cover, order: b.order,
+      createdAt: b.createdAt, updatedAt: b.updatedAt,
+    })),
     notes: notes.map((n) => ({
-      id: n.id, title: n.title, date: n.date, place: n.place,
+      id: n.id, notebookId: n.notebookId, title: n.title, date: n.date,
+      place: n.place,
       createdAt: n.createdAt, updatedAt: n.updatedAt, pinned: n.pinned ? 1 : 0,
     })),
     entries: entries.map((e) => ({
@@ -52,7 +61,7 @@ export async function exportArchive(onProgress = () => {}) {
 
 const README = `dia-ry backup
 -------------
-diary.json  every note, entry and setting, as plain JSON
+diary.json  every notebook, note, entry and setting, as plain JSON
 photos/     every photo as a normal .jpg (<id>.jpg is full size,
             <id>.thumb.jpg is the small preview)
 
@@ -78,13 +87,35 @@ export async function importArchive(file, mode = 'merge', onProgress = () => {})
   }
 
   if (mode === 'replace') {
-    await db.write(['notes', 'entries', 'photos'], (tx) => {
+    await db.write(['notes', 'entries', 'photos', 'notebooks'], (tx) => {
       tx.objectStore('notes').clear();
       tx.objectStore('entries').clear();
       tx.objectStore('photos').clear();
+      tx.objectStore('notebooks').clear();
     });
     releaseAll();
   }
+
+  // A format-1 archive predates notebooks; its notes join the default shelf.
+  const books = Array.isArray(data.notebooks) && data.notebooks.length
+    ? data.notebooks
+    : [{ id: DEFAULT_NOTEBOOK, name: 'diary',
+      cover: { design: 'kraft', color: 'sand' }, order: 0 }];
+  const existingBooks = new Set((await db.all('notebooks')).map((b) => b.id));
+  for (const b of books) {
+    if (!b || !b.id || existingBooks.has(b.id)) continue;
+    await db.put('notebooks', {
+      id: b.id,
+      name: String(b.name || ''),
+      cover: b.cover && typeof b.cover === 'object'
+        ? { design: String(b.cover.design || 'kraft'), color: String(b.cover.color || 'sand') }
+        : { design: 'kraft', color: 'sand' },
+      order: Number(b.order) || 0,
+      createdAt: Number(b.createdAt) || Date.now(),
+      updatedAt: Number(b.updatedAt) || Date.now(),
+    });
+  }
+  const knownBooks = new Set((await db.all('notebooks')).map((b) => b.id));
 
   const existingNotes = new Set((await db.all('notes')).map((n) => n.id));
   const existingEntries = new Set((await db.all('entries')).map((e) => e.id));
@@ -103,6 +134,7 @@ export async function importArchive(file, mode = 'merge', onProgress = () => {})
   for (const n of notes) {
     await db.put('notes', {
       id: n.id,
+      notebookId: knownBooks.has(n.notebookId) ? n.notebookId : books[0].id,
       title: String(n.title || ''),
       date: String(n.date || '').slice(0, 10) || '1970-01-01',
       place: String(n.place || ''),

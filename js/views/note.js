@@ -87,23 +87,27 @@ export async function render(noteId) {
 async function entryNode(entry) {
   const body = el('div', { class: 'body' });
 
-  if (entry.html && entry.html.trim()) {
-    body.append(el('div', { class: 'text', html: sanitizeHTML(entry.html) }));
-  }
-
+  // Photos first, words underneath — a moment is seen before it is read.
   const photos = await getPhotos(entry.photos || []);
   if (photos.length) {
-    const strip = el('div', { class: `shots${photos.length === 1 ? ' single' : ''}` });
+    const strip = el('div', {
+      class: 'shots',
+      'data-count': String(Math.min(photos.length, 3)),
+      'data-many': photos.length > 3 ? '' : null,
+    });
     photos.forEach((p, i) => {
       strip.append(el('button', { 'data-photo-index': i, 'aria-label': 'Open photo' }, [
         el('img', {
           src: blobURL(`t${p.id}`, p.thumb || p.blob),
           alt: '', loading: 'lazy', decoding: 'async',
-          width: p.w || null, height: p.h || null,
         }),
       ]));
     });
     body.append(strip);
+  }
+
+  if (entry.html && entry.html.trim()) {
+    body.append(el('div', { class: 'text', html: sanitizeHTML(entry.html) }));
   }
 
   body.append(el('div', { class: 'entry-tools' }, [

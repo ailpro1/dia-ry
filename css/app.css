@@ -251,6 +251,16 @@ ul, ol { margin: 0; padding-left: 1.2em; }
 .page { padding: 0 var(--gutter) 140px; }
 .page-lead { padding: 0 var(--gutter); }
 
+/* pill-shaped icon cluster, as on the notebooks header */
+.pillbar {
+  display: flex; align-items: center;
+  background: var(--surface);
+  border-radius: var(--radius-pill);
+  padding: 0 2px;
+}
+.pillbar .iconbtn { width: 40px; height: 40px; }
+.pillbar .divider { width: 1px; height: 20px; background: var(--line); }
+
 /* ---------- home ---------- */
 .hello {
   padding: 4px var(--gutter) 2px;
@@ -261,6 +271,12 @@ ul, ol { margin: 0; padding-left: 1.2em; }
   padding: 0 var(--gutter) 14px;
   font-size: 2.1em; font-weight: 600; letter-spacing: -0.02em;
   text-transform: lowercase;
+}
+
+.home-sub {
+  padding: 0 var(--gutter) 16px;
+  margin-top: -10px;
+  color: var(--ink-3); font-size: 0.86em; text-transform: lowercase;
 }
 
 .searchbar { padding: 0 var(--gutter) 14px; }
@@ -344,6 +360,83 @@ ul, ol { margin: 0; padding-left: 1.2em; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
+/* ---------- shelf ---------- */
+.shelf-row { margin-bottom: 22px; }
+.shelf-books {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+  align-items: end; justify-items: center;
+  padding: 0 4px;
+}
+.book {
+  display: block; width: 78%;
+  transition: transform 0.18s var(--ease);
+}
+.book:active { transform: translateY(2px) scale(0.98); }
+.book img {
+  width: 100%; height: auto; display: block;
+  border-radius: 4px 8px 8px 4px;
+  box-shadow: 0 10px 18px -8px rgba(0, 0, 0, 0.45),
+    0 2px 4px rgba(0, 0, 0, 0.12);
+}
+.book.add {
+  width: 78%;
+  aspect-ratio: 300 / 420;
+  border: 2px dashed var(--line);
+  border-radius: 10px;
+  display: grid; place-items: center;
+  color: var(--ink-3);
+}
+.book.add span {
+  width: 46px; height: 46px; border-radius: var(--radius-pill);
+  border: 1px solid var(--ink-3);
+  display: grid; place-items: center; font-size: 22px; line-height: 1;
+}
+
+/* the plank the books stand on */
+.plank {
+  height: 11px; margin: 0 -2px;
+  border-radius: 3px;
+  background: linear-gradient(var(--plank-top), var(--plank-bottom));
+  box-shadow: 0 4px 8px -4px rgba(0, 0, 0, 0.35);
+}
+:root { --plank-top: #f2d4ab; --plank-bottom: #e0bb8c; }
+[data-mode="dark"] { --plank-top: #4a3c2e; --plank-bottom: #382d22; }
+
+.shelf-labels {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+  padding: 12px 4px 0; text-align: center;
+}
+.shelf-labels .nb-name {
+  font-size: 1.05em; font-weight: 600; text-transform: lowercase;
+  overflow-wrap: anywhere;
+}
+.shelf-labels .nb-meta {
+  font-family: var(--font-note);
+  font-size: 0.82em; color: var(--ink-3); margin-top: 2px;
+}
+.shelf-labels .nb-meta .now { color: var(--tint); }
+
+/* ---------- cover picker ---------- */
+.cover-preview { display: flex; justify-content: center; }
+.cover-preview img {
+  width: 132px; border-radius: 4px 8px 8px 4px;
+  box-shadow: 0 10px 18px -8px rgba(0, 0, 0, 0.45);
+}
+.cover-picker {
+  display: flex; gap: 10px; overflow-x: auto; padding: 2px 0 6px;
+  scrollbar-width: none;
+}
+.cover-picker::-webkit-scrollbar { display: none; }
+.cover-picker button {
+  flex: 0 0 auto; border-radius: 6px; overflow: hidden;
+  border: 2px solid transparent; line-height: 0;
+}
+.cover-picker button.on { border-color: var(--ink-2); }
+.cover-picker img { width: 54px; height: 76px; object-fit: cover; }
+.cover-picker .chip {
+  width: 44px; height: 44px; border-radius: var(--radius-pill);
+}
+
 /* ---------- note screen ---------- */
 .note-head { padding: 2px var(--gutter) 18px; }
 .note-head .sub {
@@ -357,8 +450,10 @@ ul, ol { margin: 0; padding-left: 1.2em; }
 .entry { display: flex; gap: 12px; padding: 10px 0 18px; }
 .entry .at {
   flex: 0 0 var(--time-col);
+  align-self: flex-start;            /* sit level with the first photo */
+  display: block; text-align: left;
   font-size: 0.78em; color: var(--ink-3);
-  padding-top: 2px; text-align: left; font-variant-numeric: tabular-nums;
+  padding-top: 2px; font-variant-numeric: tabular-nums;
 }
 .entry .body { flex: 1 1 auto; min-width: 0; }
 .entry .text {
@@ -374,34 +469,29 @@ ul, ol { margin: 0; padding-left: 1.2em; }
   margin: 0.4em 0; padding-left: 10px; border-left: 2px solid var(--line);
   color: var(--ink-2);
 }
-.entry .text + .shots, .shots + .text { margin-top: 10px; }
+.entry .shots + .text { margin-top: 10px; }
 
-/* photo strip — horizontal scroll, mirrors the screenshots */
-.shots {
-  display: flex; gap: 8px;
-  overflow-x: auto; scroll-snap-type: x mandatory;
-  -webkit-overflow-scrolling: touch;
-  margin: 0 calc(var(--gutter) * -1) 0 0;
-  padding-right: var(--gutter);
-  scrollbar-width: none;
-}
-.shots::-webkit-scrollbar { display: none; }
+/* Photos sit above their words and share the width of the column, the way
+   the reference lays a day out. */
+.shots { display: flex; flex-wrap: wrap; gap: 8px; }
 .shots button {
-  flex: 0 0 auto; scroll-snap-align: start;
+  flex: 1 1 0; min-width: 0;
   border-radius: var(--radius); overflow: hidden;
   background: var(--bg-2);
   transition: transform 0.15s var(--ease);
 }
 .shots button:active { transform: scale(0.97); }
-.shots img {
-  height: 190px; width: auto; max-width: 78vw; object-fit: cover;
-  border-radius: var(--radius);
-}
-.shots.single { overflow: visible; margin-right: 0; padding-right: 0; }
-.shots.single button { max-width: 100%; }
-/* A lone photo keeps its own shape instead of stretching the page. */
-.shots.single img { height: auto; width: auto; max-width: 100%;
-  max-height: 380px; }
+.shots img { width: 100%; height: var(--shot-h, 150px); object-fit: cover; }
+.shots[data-count="1"] { --shot-h: 250px; }
+.shots[data-count="2"] { --shot-h: 190px; }
+.shots[data-count="3"] { --shot-h: 140px; }
+.shots[data-count="1"] button { flex: 0 1 auto; max-width: 100%; }
+.shots[data-count="1"] img { width: auto; height: auto; max-width: 100%;
+  max-height: 330px; }
+/* Four or more wrap into a tidy grid rather than shrinking to slivers. */
+.shots[data-many] { --shot-h: 120px; }
+.shots[data-many] button { flex: 1 1 calc(33.333% - 6px);
+  max-width: calc(33.333% - 6px); }
 
 /* Kept out of the way until the timestamp is tapped, so the page stays calm. */
 .entry-tools {
@@ -475,6 +565,12 @@ ul, ol { margin: 0; padding-left: 1.2em; }
 }
 .sheet-head h2 { flex: 1; text-align: center; font-size: 0.95em;
   font-weight: 600; text-transform: lowercase; }
+.sheet-heading { flex: 1; text-align: center; }
+.sheet-heading h2 { flex: none; }
+.composer-where {
+  font-size: 0.76em; color: var(--ink-3); text-transform: lowercase;
+  margin-top: 1px;
+}
 .sheet-head .txtbtn { padding: 0 10px; min-height: var(--tap);
   font-weight: 600; color: var(--tint); }
 .sheet-head .txtbtn[disabled] { opacity: 0.4; }
@@ -544,6 +640,30 @@ ul, ol { margin: 0; padding-left: 1.2em; }
 .toolbar .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px;
   flex: 0 0 auto; }
 
+/* shutter row, mirroring a camera */
+.capture-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 14px 6px calc(var(--sab) + 6px);
+}
+.capture-side {
+  width: 48px; height: 48px; border-radius: var(--radius-pill);
+  background: var(--surface); color: var(--ink);
+  display: grid; place-items: center;
+  transition: transform 0.15s var(--ease);
+}
+.capture-side:active { transform: scale(0.92); }
+.capture-side.accent { background: var(--accent); color: var(--accent-ink); }
+.capture-side svg { width: 22px; height: 22px; fill: none; stroke: currentColor;
+  stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.shutter {
+  width: 68px; height: 68px; border-radius: var(--radius-pill);
+  background: var(--surface);
+  border: 3px solid var(--line);
+  box-shadow: inset 0 0 0 3px var(--bg);
+  transition: transform 0.12s var(--ease);
+}
+.shutter:active { transform: scale(0.92); }
+
 /* ---------- form rows ---------- */
 .field { margin-bottom: 16px; }
 .field label {
@@ -551,7 +671,7 @@ ul, ol { margin: 0; padding-left: 1.2em; }
   text-transform: uppercase; color: var(--ink-3); margin-bottom: 6px;
 }
 .field input[type="text"], .field input[type="date"], .field input[type="time"],
-.field textarea, .field select {
+.field textarea, .field select, .field input[type="search"] {
   width: 100%; padding: 12px 14px;
   border: 0; border-radius: var(--radius);
   background: var(--surface); color: var(--ink);

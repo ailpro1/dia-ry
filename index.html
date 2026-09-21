@@ -44,37 +44,67 @@
     <g id="i-close"><path d="M6 6l12 12M18 6L6 18"/></g>
     <g id="i-plus"><path d="M12 5v14M5 12h14"/></g>
     <g id="i-newnote"><path d="M5 4h9l5 5v11a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M14 4v5h5"/><path d="M9 14h6M12 11v6"/></g>
+    <g id="i-check"><path d="M5 13l4.5 4.5L19 7"/></g>
+    <g id="i-library"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M7 21h12a2 2 0 002-2V7"/><circle cx="8" cy="8" r="1.4"/><path d="M3 14l4-3 5 4"/></g>
+    <g id="i-book"><path d="M4 5a2 2 0 012-2h12v18H6a2 2 0 01-2-2z"/><path d="M8 3v18"/></g>
     <g id="i-clock"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></g>
   </defs>
 </svg>
 
 <div id="app">
 
-  <!-- ============ home ============ -->
-  <section class="screen is-active" id="screen-home">
+  <!-- ============ shelf ============ -->
+  <section class="screen is-active" id="screen-shelf">
     <header class="topbar">
       <div class="spacer"></div>
-      <button class="iconbtn" id="btn-search" aria-label="Search">
-        <svg><use href="#i-search"/></svg>
-      </button>
-      <button class="iconbtn" id="btn-settings" aria-label="Settings">
-        <svg><use href="#i-settings"/></svg>
-      </button>
+      <div class="pillbar">
+        <button class="iconbtn" id="btn-search" aria-label="Search">
+          <svg><use href="#i-search"/></svg>
+        </button>
+        <span class="divider"></span>
+        <button class="iconbtn" id="btn-settings" aria-label="Settings">
+          <svg><use href="#i-settings"/></svg>
+        </button>
+      </div>
     </header>
 
     <p class="hello" id="hello"></p>
-    <h1 class="home-title">dia&#8209;ry</h1>
+    <h1 class="home-title">your notebooks</h1>
+    <p class="home-sub" id="shelf-sub"></p>
 
     <div class="searchbar" id="searchbar" hidden>
-      <input type="search" id="search-input" placeholder="search your diary"
+      <input type="search" id="search-input" placeholder="search every notebook"
              autocomplete="off" autocorrect="off" spellcheck="false">
     </div>
+
+    <div class="page" id="shelf"></div>
+    <div class="page" id="search-results" hidden></div>
+
+    <div class="dock">
+      <button class="btn-pill" id="btn-write">+ write</button>
+    </div>
+  </section>
+
+  <!-- ============ notebook ============ -->
+  <section class="screen" id="screen-home">
+    <header class="topbar">
+      <button class="iconbtn" id="home-back" aria-label="Back to your notebooks">
+        <svg><use href="#i-back"/></svg>
+      </button>
+      <div class="spacer"></div>
+      <button class="iconbtn" id="nb-edit" aria-label="Notebook settings">
+        <svg><use href="#i-edit"/></svg>
+      </button>
+    </header>
+
+    <p class="hello" id="nb-count"></p>
+    <h1 class="home-title" id="nb-name"></h1>
 
     <div class="page" id="home-list"></div>
 
     <div class="dock">
       <div class="dock-row">
-        <button class="btn-pill" id="btn-write">+ write</button>
+        <button class="btn-pill" id="btn-write-here">+ write</button>
         <button class="btn-square" id="btn-new" aria-label="Start a new note">
           <svg><use href="#i-newnote"/></svg>
         </button>
@@ -116,13 +146,19 @@
   <div class="scrim" data-close></div>
   <div class="panel">
     <div class="sheet-head">
-      <button class="txtbtn" data-close>cancel</button>
-      <h2 id="composer-title">add</h2>
-      <button class="txtbtn" id="composer-save">save</button>
+      <button class="iconbtn" data-close aria-label="Cancel">
+        <svg><use href="#i-back"/></svg>
+      </button>
+      <div class="sheet-heading">
+        <h2 id="composer-title">add</h2>
+        <p class="composer-where" id="composer-where"></p>
+      </div>
+      <button class="iconbtn" id="composer-save" aria-label="Save">
+        <svg><use href="#i-check"/></svg>
+      </button>
     </div>
     <div class="sheet-body">
       <div class="composer-time">
-        <svg class="sr-only"></svg>
         <span>time</span>
         <input type="time" id="composer-at">
       </div>
@@ -131,8 +167,6 @@
       <div class="tray" id="composer-tray"></div>
       <div class="progress" id="composer-progress" hidden><i></i></div>
       <div class="toolbar" id="composer-toolbar">
-        <button data-photo aria-label="Add photos"><svg><use href="#i-camera"/></svg></button>
-        <span class="sep"></span>
         <button data-cmd="bold" aria-label="Bold"><svg><use href="#i-bold"/></svg></button>
         <button data-cmd="italic" aria-label="Italic"><svg><use href="#i-italic"/></svg></button>
         <button data-cmd="underline" aria-label="Underline"><svg><use href="#i-underline"/></svg></button>
@@ -142,9 +176,19 @@
         <button data-cmd="insertUnorderedList" aria-label="Bullet list"><svg><use href="#i-list"/></svg></button>
         <button data-cmd="formatBlock" data-arg="blockquote" aria-label="Quote"><svg><use href="#i-quote"/></svg></button>
       </div>
+      <div class="capture-row">
+        <button class="capture-side" id="btn-library" aria-label="Add from your photos">
+          <svg><use href="#i-library"/></svg>
+        </button>
+        <button class="shutter" id="btn-shutter" aria-label="Take a photo"></button>
+        <button class="capture-side accent" id="btn-done" aria-label="Save this entry">
+          <svg><use href="#i-check"/></svg>
+        </button>
+      </div>
     </div>
   </div>
   <input type="file" id="file-input" accept="image/*" multiple class="sr-only">
+  <input type="file" id="camera-input" accept="image/*" capture="environment" class="sr-only">
 </div>
 
 <!-- ============ note details ============ -->
@@ -170,8 +214,45 @@
         <label for="nf-place">place <span style="text-transform:none">(optional)</span></label>
         <input type="text" id="nf-place" placeholder="fanling" autocapitalize="none">
       </div>
+      <div class="field">
+        <label for="nf-notebook">notebook</label>
+        <select id="nf-notebook"></select>
+      </div>
       <div class="rows" id="nf-danger" hidden>
         <button class="row danger" id="nf-delete"><span class="lab">delete this note</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ notebook details ============ -->
+<div class="sheet" id="sheet-notebook" role="dialog" aria-modal="true" aria-label="Notebook">
+  <div class="scrim" data-close></div>
+  <div class="panel">
+    <div class="sheet-head">
+      <button class="txtbtn" data-close>cancel</button>
+      <h2 id="nbform-title">new notebook</h2>
+      <button class="txtbtn" id="nbform-save">save</button>
+    </div>
+    <div class="sheet-body">
+      <div class="field">
+        <label for="nbf-name">name</label>
+        <input type="text" id="nbf-name" placeholder="thought dump"
+               autocapitalize="none" enterkeyhint="done">
+      </div>
+      <div class="field">
+        <label>cover</label>
+        <div class="cover-preview"><img id="nbf-preview" alt=""></div>
+      </div>
+      <p class="section-title">design</p>
+      <div class="cover-picker" id="nbf-designs"></div>
+      <p class="section-title">colour</p>
+      <div class="cover-picker" id="nbf-colors"></div>
+      <div class="rows" id="nbf-danger" hidden style="margin-top:20px">
+        <button class="row danger" id="nbf-delete">
+          <span class="lab">delete this notebook</span>
+          <span class="val" id="nbf-delete-note"></span>
+        </button>
       </div>
     </div>
   </div>

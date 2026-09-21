@@ -8,9 +8,13 @@ write stays in the browser's own database on the device.
 
 ## What it does
 
-- **Notes and entries.** A note is a page (a day, a place, a mood). Inside it,
-  entries stack up on a timeline with the time in the left margin, exactly like
-  a paper diary.
+- **Notebooks.** A shelf of notebooks, each with its own cover, for the
+  different corners of a life — a trip, a book log, a place to think. Covers
+  are drawn as SVG (six designs × six colourways), so they weigh nothing and
+  stay sharp at any size.
+- **Notes and entries.** A note is a page inside a notebook (a day, a place, a
+  mood). Inside it, entries stack up on a timeline with the time in the left
+  margin, photos above their words, exactly like a paper diary.
 - **Write in one tap.** The home button drops you straight into today's page,
   making it if it does not exist yet. A page with no title wears its date
   instead, so nothing has to be named.
@@ -18,12 +22,13 @@ write stays in the browser's own database on the device.
   earlier years.
 - **Undo.** Deleting a note or an entry offers eight seconds of undo, photos
   and all.
-- **Photos.** Pick as many as you like per entry. They are compressed on the
+- **Photos.** The shutter opens the camera, the side button your library. Pick
+  as many as you like per entry. They are compressed on the
   device (1800px long edge) with a separate thumbnail, so scrolling stays fast
   and years of photos still fit.
 - **Rich text.** Bold, italic, underline, strikethrough, highlight, bullets and
   quotes. Pasted text comes in clean.
-- **Search** across every title, place and word you have written.
+- **Search** across every notebook, title, place and word you have written.
 - **Themes.** Six palettes, light / dark / follow-system, and a text-size slider.
 - **Offline.** Works with no signal once installed.
 - **Updates itself.** A new deploy is picked up the next time the app is
@@ -93,13 +98,14 @@ photos are normal JPEGs.
 ```
 index.html              app shell, all screens
 css/app.css             themes + layout (every colour is a token)
-js/db.js                IndexedDB open/transaction helpers
-js/store.js             notes, entries, photos, settings
+js/db.js                IndexedDB open/transaction helpers + migrations
+js/store.js             notebooks, notes, entries, photos, settings
+js/covers.js            notebook covers, drawn as SVG
 js/images.js            downscale + compress on the device
 js/zip.js               hand-written ZIP reader/writer
 js/backup.js            export / restore
 js/ui.js                sheets, toast, lightbox
-js/views/               home, note, composer, settings
+js/views/               shelf, home (a notebook), note, composer, settings
 sw.js                   offline shell cache + VERSION
 js/update.js            picks up new versions and reloads when it is safe
 icons/source.png        the icon artwork everything else is built from
@@ -109,9 +115,12 @@ scripts/make-icons.mjs  rebuilds icons/ from source.png (needs a Chromium)
 ## Keeping it working for years
 
 - The database schema is **versioned and additive only** — `js/db.js` must never
-  drop or repurpose an existing store, so an old diary always opens.
+  drop or repurpose an existing store, so an old diary always opens. Version 2
+  added notebooks and moved every existing note onto a default shelf; a
+  version-1 database still opens and migrates itself on first launch.
 - Backup files carry a `format` number. A newer backup is refused by an older
-  app rather than half-imported.
+  app rather than half-imported, and an older one (format 1, before notebooks)
+  restores onto the default shelf.
 - There are no dependencies to rot. The only tooling is Node, and only for
   regenerating icons.
 - After changing any shell file, bump `VERSION` in `sw.js` (see below), so

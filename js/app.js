@@ -2,12 +2,17 @@
 
 import { $, isoDate, el } from './util.js';
 import { db, requestPersistence } from './db.js';
-import { loadSettings, createNote, getNote, updateNote, deleteNote, listEntries,
-  todayNote, restore } from './store.js';
+import { loadSettings, setSetting, createNote, getNote, updateNote, deleteNote,
+  listEntries, todayNote, restore, listNotebooks, getNotebook, createNotebook,
+  updateNotebook, deleteNotebook, notebookCounts } from './store.js';
+import { DEFAULT_NOTEBOOK } from './db.js';
+import { DESIGNS, COLORS, coverURL } from './covers.js';
 import { releaseAll } from './images.js';
 import { wireSheets, openSheet, closeSheet, closeLightbox, toast, toastAction,
   topOverlayId, anyOverlayOpen, confirmAction } from './ui.js';
-import { initHome, reload as reloadHome, setGreeting } from './views/home.js';
+import { initHome, reload as reloadHome, setGreeting, noteCard }
+  from './views/home.js';
+import { initShelf, renderShelf } from './views/shelf.js';
 import { initNote, render as renderNote, currentNoteId } from './views/note.js';
 import { initComposer, openForNew, openForEdit, composerHasWork }
   from './views/composer.js';
@@ -55,6 +60,7 @@ function showScreen(id) {
 
 async function route() {
   const hash = location.hash || '#/';
+
   const noteMatch = hash.match(/^#\/note\/([\w-]+)$/);
   if (noteMatch) {
     const note = await getNote(noteMatch[1]);
@@ -63,21 +69,55 @@ async function route() {
     await renderNote(note.id);
     return;
   }
-  showScreen('screen-home');
+
+  const bookMatch = hash.match(/^#\/nb\/([\w-]+)$/);
+  if (bookMatch) {
+    const book = await getNotebook(bookMatch[1]);
+    if (!book) { location.hash = '#/'; return; }
+    await setCurrentNotebook(book.id);
+    showScreen('screen-home');
+    $('#nb-name').textContent = book.name || 'untitled';
+    const { counts } = await notebookCounts();
+    const n = counts[book.id] || 0;
+    $('#nb-count').textContent = `${n} note${n === 1 ? '' : 's'}`;
+    await reloadHome(book.id);
+    return;
+  }
+
+  showScreen('screen-shelf');
   setGreeting(settings.ownerName);
-  await reloadHome();
+  await renderShelf(settings.currentNotebook);
 }
 
-function goHome() {
-  if (location.hash && location.hash !== '#/') history.back();
-  else location.hash = '#/';
+/** The notebook quick capture writes into: whichever was opened last. */
+async function setCurrentNotebook(id) {
+  if (settings.currentNotebook === id) return;
+  settings.currentNotebook = id;
+  await setSetting('currentNotebook', id);
+}
+
+/* Where the last hashchange came from. Real back is nicer when it applies
+   (it keeps scroll position and the forward entry), but after a note moves
+   notebooks the previous entry is the wrong shelf, so check first. */
+let prevHash = '#/';
+
+function goBackTo(hash) {
+  if (prevHash === hash && location.hash !== hash) history.back();
+  else if (location.hash !== hash) location.hash = hash;
+  else route();
+}
+
+function currentBook() {
+  const m = (location.hash || '').match(/^#\/nb\/([\w-]+)$/);
+  return m ? m[1] : settings.currentNotebook;
 }
 
 /* ---------------- quick capture ---------------- */
 
 /** Straight into writing: today's page, made if it does not exist yet. */
-async function quickCapture() {
-  const note = await todayNote();
+async function quickCapture(notebookId = settings.currentNotebook) {
+  const book = await getNotebook(notebookId) || (await listNotebooks())[0];
+  const note = await todayNote(book.id);
   const target = `#/note/${note.id}`;
   // Compare against the route, not the note view's last-rendered id: that id
   // survives going home, which would leave the composer saving into a screen
@@ -91,9 +131,18 @@ async function quickCapture() {
 /* ---------------- note details sheet ---------------- */
 
 let noteFormId = null;
+let newNoteNotebook = null;
 
-function openNoteForm(note) {
+async function openNoteForm(note, notebookId = null) {
   noteFormId = note ? note.id : null;
+  newNoteNotebook = notebookId || settings.currentNotebook;
+
+  const books = await listNotebooks();
+  const chosen = note ? note.notebookId : newNoteNotebook;
+  $('#nf-notebook').replaceChildren(...books.map((b) => el('option', {
+    value: b.id,
+    selected: b.id === chosen,
+  }, [b.name || 'untitled'])));
   $('#noteform-title').textContent = note ? 'note details' : 'new note';
   $('#nf-title').value = note ? note.title : '';
   $('#nf-date').value = note ? note.date : isoDate();
@@ -107,18 +156,89 @@ async function saveNoteForm() {
   const title = $('#nf-title').value.trim();
   const date = $('#nf-date').value || isoDate();
   const place = $('#nf-place').value.trim();
+  const notebookId = $('#nf-notebook').value || settings.currentNotebook;
 
   if (noteFormId) {
-    await updateNote(noteFormId, { title, date, place });
+    await updateNote(noteFormId, { title, date, place, notebookId });
     closeSheet('sheet-note');
     await renderNote(noteFormId);
     toast('saved');
   } else {
-    const note = await createNote({ title, date, place });
+    const note = await createNote({
+      title, date, place, notebookId: notebookId || DEFAULT_NOTEBOOK,
+    });
     closeSheet('sheet-note');
     location.hash = `#/note/${note.id}`;
     // Straight into writing — that is the whole point of a quick diary.
     setTimeout(() => openForNew(note.id), 260);
+  }
+}
+
+/* ---------------- notebook sheet ---------------- */
+
+let nbFormId = null;
+let nbDraft = { design: 'kraft', color: 'sand' };
+
+async function openNotebookForm(book) {
+  nbFormId = book ? book.id : null;
+  nbDraft = book
+    ? { design: book.cover?.design || 'kraft', color: book.cover?.color || 'sand' }
+    : { design: 'kraft', color: 'sand' };
+
+  $('#nbform-title').textContent = book ? 'notebook' : 'new notebook';
+  $('#nbf-name').value = book ? book.name : '';
+
+  const books = await listNotebooks();
+  // The last notebook cannot go: every note needs a shelf to stand on.
+  const removable = !!book && books.length > 1;
+  $('#nbf-danger').hidden = !removable;
+  if (removable) {
+    const { counts } = await notebookCounts();
+    const n = counts[book.id] || 0;
+    $('#nbf-delete-note').textContent = n ? `${n} note${n === 1 ? '' : 's'} too` : '';
+  }
+
+  buildCoverPickers();
+  openSheet('sheet-notebook');
+  if (!book) setTimeout(() => $('#nbf-name').focus(), 150);
+}
+
+function buildCoverPickers() {
+  const name = () => $('#nbf-name').value.trim();
+
+  const designs = $('#nbf-designs');
+  designs.replaceChildren(...DESIGNS.map((d) => el('button', {
+    class: d === nbDraft.design ? 'on' : '',
+    'aria-label': d,
+    onclick: () => { nbDraft.design = d; buildCoverPickers(); },
+  }, [el('img', { src: coverURL(d, nbDraft.color, ''), alt: '' })])));
+
+  const colors = $('#nbf-colors');
+  colors.replaceChildren(...Object.keys(COLORS).map((c) => el('button', {
+    class: c === nbDraft.color ? 'on' : '',
+    'aria-label': c,
+    onclick: () => { nbDraft.color = c; buildCoverPickers(); },
+  }, [el('span', {
+    class: 'chip',
+    style: `display:block;background:${COLORS[c].base}`,
+  })])));
+
+  $('#nbf-preview').src = coverURL(nbDraft.design, nbDraft.color, name());
+}
+
+async function saveNotebookForm() {
+  const name = $('#nbf-name').value.trim();
+  const cover = { ...nbDraft };
+  if (nbFormId) {
+    await updateNotebook(nbFormId, { name, cover });
+    closeSheet('sheet-notebook');
+    await route();
+    toast('saved');
+  } else {
+    const book = await createNotebook({ name, cover });
+    await setCurrentNotebook(book.id);
+    closeSheet('sheet-notebook');
+    location.hash = `#/nb/${book.id}`;
   }
 }
 
@@ -135,6 +255,13 @@ async function boot() {
 
   initHome({
     onOpenNote: (id) => { location.hash = `#/note/${id}`; },
+  });
+
+  initShelf({
+    onOpen: (id) => { location.hash = `#/nb/${id}`; },
+    onOpenNote: (id) => { location.hash = `#/note/${id}`; },
+    onNewNotebook: () => openNotebookForm(null),
+    card: noteCard,
   });
 
   initNote({
@@ -167,20 +294,46 @@ async function boot() {
       setGreeting(settings.ownerName);
     },
     eraseAll: async () => {
-      await db.write(['notes', 'entries', 'photos'], (tx) => {
+      await db.write(['notes', 'entries', 'photos', 'notebooks'], (tx) => {
         tx.objectStore('notes').clear();
         tx.objectStore('entries').clear();
         tx.objectStore('photos').clear();
+        tx.objectStore('notebooks').clear();
       });
       releaseAll();
+      settings.currentNotebook = DEFAULT_NOTEBOOK;
+      await setSetting('currentNotebook', DEFAULT_NOTEBOOK);
       location.hash = '#/';
-      await reloadHome();
+      await route();
     },
   });
 
   /* buttons */
-  $('#btn-write').addEventListener('click', quickCapture);
-  $('#btn-new').addEventListener('click', () => openNoteForm(null));
+  $('#btn-write').addEventListener('click', () => quickCapture());
+  $('#btn-write-here').addEventListener('click', () => quickCapture(currentBook()));
+  $('#btn-new').addEventListener('click', () => openNoteForm(null, currentBook()));
+  $('#home-back').addEventListener('click', () => goBackTo('#/'));
+  $('#nb-edit').addEventListener('click', async () => {
+    openNotebookForm(await getNotebook(currentBook()));
+  });
+  $('#nbform-save').addEventListener('click', saveNotebookForm);
+  $('#nbf-name').addEventListener('input', () => {
+    $('#nbf-preview').src = coverURL(nbDraft.design, nbDraft.color,
+      $('#nbf-name').value.trim());
+  });
+  $('#nbf-delete').addEventListener('click', async () => {
+    if (!nbFormId) return;
+    if (!confirmAction('Delete this notebook and every note in it?')) return;
+    const bundle = await deleteNotebook(nbFormId);
+    closeSheet('sheet-notebook');
+    location.hash = '#/';
+    await route();
+    toastAction('notebook deleted', 'undo', async () => {
+      await restore(bundle);
+      toast('notebook restored');
+      await route();
+    });
+  });
   $('#btn-settings').addEventListener('click', openSettings);
   $('#noteform-save').addEventListener('click', saveNoteForm);
   $('#nf-title').addEventListener('keydown', (ev) => {
@@ -191,7 +344,7 @@ async function boot() {
     if (!confirmAction('Delete this note, its entries and all its photos?')) return;
     const bundle = await deleteNote(noteFormId);
     closeSheet('sheet-note');
-    location.hash = '#/';
+    location.hash = bundle ? `#/nb/${bundle.notes[0].notebookId}` : '#/';
     toastAction('note deleted', 'undo', async () => {
       await restore(bundle);
       location.hash = `#/note/${bundle.notes[0].id}`;
@@ -199,7 +352,10 @@ async function boot() {
     });
   });
 
-  $('#note-back').addEventListener('click', goHome);
+  $('#note-back').addEventListener('click', async () => {
+    const note = await getNote(currentNoteId());
+    goBackTo(note ? `#/nb/${note.notebookId}` : '#/');
+  });
   $('#btn-add-entry').addEventListener('click', () => openForNew(currentNoteId()));
   $('#note-edit').addEventListener('click', async () => {
     openNoteForm(await getNote(currentNoteId()));
@@ -220,7 +376,10 @@ async function boot() {
     else if (top) closeSheet(top);
   });
 
-  window.addEventListener('hashchange', route);
+  window.addEventListener('hashchange', (ev) => {
+    try { prevHash = new URL(ev.oldURL).hash || '#/'; } catch (_) { prevHash = '#/'; }
+    route();
+  });
   await route();
   await requestPersistence();
 
